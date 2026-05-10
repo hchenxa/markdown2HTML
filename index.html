@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Markdown Viewer</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github.min.css" id="hljs-light">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github-dark.min.css" id="hljs-dark" disabled>
+<style>
+:root {
+  --bg: #ffffff;
+  --bg-secondary: #f6f8fa;
+  --text: #1f2328;
+  --text-secondary: #656d76;
+  --border: #d0d7de;
+  --link: #0969da;
+  --code-bg: #eff1f3;
+  --blockquote-border: #d0d7de;
+  --blockquote-text: #656d76;
+  --table-border: #d0d7de;
+  --table-row-alt: #f6f8fa;
+  --drop-bg: rgba(9, 105, 218, 0.06);
+  --drop-border: #0969da;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+[data-theme="dark"] {
+  --bg: #0d1117;
+  --bg-secondary: #161b22;
+  --text: #e6edf3;
+  --text-secondary: #8b949e;
+  --border: #30363d;
+  --link: #58a6ff;
+  --code-bg: #161b22;
+  --blockquote-border: #30363d;
+  --blockquote-text: #8b949e;
+  --table-border: #30363d;
+  --table-row-alt: #161b22;
+  --drop-bg: rgba(88, 166, 255, 0.06);
+  --drop-border: #58a6ff;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  transition: background 0.3s, color 0.3s;
+}
+
+/* Toolbar */
+.toolbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  z-index: 100;
+  box-shadow: var(--shadow);
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.toolbar-logo {
+  font-weight: 700;
+  font-size: 15px;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.toolbar-filename {
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s;
+}
+
+.btn:hover {
+  background: var(--bg);
+}
+
+/* Drop Zone */
+.drop-zone {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  background: var(--bg);
+}
+
+.drop-zone-inner {
+  border: 3px dashed var(--border);
+  border-radius: 20px;
+  padding: 60px 80px;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+  max-width: 500px;
+}
+
+.drop-zone.drag-over .drop-zone-inner {
+  border-color: var(--drop-border);
+  background: var(--drop-bg);
+}
+
+.drop-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.7;
+}
+
+.drop-title {
+  font-size: 22px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.drop-subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+}
+
+.drop-or {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.file-input-btn {
+  display: inline-block;
+  padding: 8px 20px;
+  background: var(--link);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.file-input-btn:hover {
+  opacity: 0.9;
+}
+
+.hidden-input {
+  display: none;
+}
+
+/* Content */
+.content {
+  display: none;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 72px 32px 60px;
+  transition: margin-left 0.3s, max-width 0.3s;
+}
+
+.content.active {
+  display: block;
+}
+
+.content.toc-open {
+  margin-left: 280px;
+  max-width: calc(100% - 300px);
+}
+
+/* Drag overlay when content is showing */
+.drag-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--drop-bg);
+  backdrop-filter: blur(4px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.drag-overlay.active {
+  display: flex;
+}
+
+.drag-overlay-text {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--drop-border);
+  padding: 24px 40px;
+  border: 3px dashed var(--drop-border);
+  border-radius: 16px;
+  background: var(--bg);
+}
+
+/* Markdown Body Styles */
+.markdown-body h1, .markdown-body h2, .markdown-body h3,
+.markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  margin-top: 24px;
+  margin-bottom: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.markdown-body h1 { font-size: 2em; padding-bottom: 0.3em; border-bottom: 1px solid var(--border); }
+.markdown-body h2 { font-size: 1.5em; padding-bottom: 0.3em; border-bottom: 1px solid var(--border); }
+.markdown-body h3 { font-size: 1.25em; }
+.markdown-body h4 { font-size: 1em; }
+.markdown-body h5 { font-size: 0.875em; }
+.markdown-body h6 { font-size: 0.85em; color: var(--text-secondary); }
+
+.markdown-body p {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.markdown-body a {
+  color: var(--link);
+  text-decoration: none;
+}
+
+.markdown-body a:hover {
+  text-decoration: underline;
+}
+
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  margin: 8px 0;
+}
+
+.markdown-body code {
+  background: var(--code-bg);
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-size: 85%;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.markdown-body pre {
+  background: var(--code-bg);
+  border-radius: 8px;
+  padding: 16px;
+  overflow-x: auto;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+}
+
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+  font-size: 85%;
+  line-height: 1.5;
+}
+
+.markdown-body blockquote {
+  border-left: 4px solid var(--blockquote-border);
+  padding: 0 16px;
+  color: var(--blockquote-text);
+  margin: 0 0 16px 0;
+}
+
+.markdown-body ul, .markdown-body ol {
+  padding-left: 2em;
+  margin-bottom: 16px;
+}
+
+.markdown-body li {
+  margin-bottom: 4px;
+}
+
+.markdown-body li + li {
+  margin-top: 4px;
+}
+
+.markdown-body table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  display: block;
+}
+
+.markdown-body table th,
+.markdown-body table td {
+  border: 1px solid var(--table-border);
+  padding: 8px 13px;
+  text-align: left;
+}
+
+.markdown-body table th {
+  font-weight: 600;
+  background: var(--bg-secondary);
+}
+
+.markdown-body table tr:nth-child(even) {
+  background: var(--table-row-alt);
+}
+
+.markdown-body hr {
+  height: 2px;
+  background: var(--border);
+  border: none;
+  margin: 24px 0;
+}
+
+.markdown-body input[type="checkbox"] {
+  margin-right: 6px;
+}
+
+.markdown-body details {
+  margin-bottom: 16px;
+}
+
+.markdown-body details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* TOC */
+.toc {
+  position: fixed;
+  left: 0;
+  top: 48px;
+  width: 260px;
+  height: calc(100vh - 48px);
+  overflow-y: auto;
+  font-size: 12px;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  padding: 20px 16px;
+  transform: translateX(-100%);
+  transition: transform 0.3s;
+  z-index: 90;
+}
+
+.toc.active {
+  transform: translateX(0);
+}
+
+.toc-title {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 12px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.toc a {
+  display: block;
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 4px 8px;
+  line-height: 1.4;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.toc a:hover {
+  color: var(--link);
+  background: var(--bg);
+}
+
+.toc a.toc-active {
+  color: var(--link);
+  background: var(--bg);
+  font-weight: 600;
+}
+
+.toc a.toc-h1 { padding-left: 8px; }
+.toc a.toc-h2 { padding-left: 8px; }
+.toc a.toc-h3 { padding-left: 24px; }
+.toc a.toc-h4 { padding-left: 40px; }
+
+@media (max-width: 768px) {
+  .toc.active {
+    width: 240px;
+    box-shadow: 4px 0 12px rgba(0,0,0,0.15);
+  }
+  .content.toc-open {
+    margin-left: 0;
+    max-width: 860px;
+  }
+}
+
+/* Scroll to top */
+.scroll-top {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--link);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  z-index: 90;
+  transition: opacity 0.2s;
+}
+
+.scroll-top.visible {
+  display: flex;
+}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <div class="toolbar-left">
+    <span class="toolbar-logo">MD Viewer</span>
+    <span class="toolbar-filename" id="filename"></span>
+  </div>
+  <div class="toolbar-right">
+    <button class="btn" id="tocToggle" style="display:none" title="Toggle Table of Contents">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2 3h12v1.5H2V3zm0 4h8v1.5H2V7zm0 4h10v1.5H2V11z"/></svg>
+      TOC
+    </button>
+    <button class="btn" id="themeToggle" title="Toggle Theme">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" id="themeIcon"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1zm0 12.5V2.5a5.5 5.5 0 0 1 0 11z"/></svg>
+    </button>
+    <button class="btn" id="openAnother" style="display:none" title="Open Another File">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M1.5 3A1.5 1.5 0 0 1 3 1.5h4.293a1.5 1.5 0 0 1 1.06.44l5.207 5.207a1.5 1.5 0 0 1 0 2.121l-4.293 4.293a1.5 1.5 0 0 1-2.121 0L1.94 8.354a1.5 1.5 0 0 1-.44-1.06V3z"/></svg>
+      Open
+    </button>
+  </div>
+</div>
+
+<div class="drop-zone" id="dropZone">
+  <div class="drop-zone-inner">
+    <div class="drop-icon">📄</div>
+    <div class="drop-title">Drop Markdown File Here</div>
+    <div class="drop-subtitle">Supports .md and .markdown files with images</div>
+    <div class="drop-or">or</div>
+    <label class="file-input-btn">
+      Browse Files
+      <input type="file" class="hidden-input" id="fileInput" accept=".md,.markdown,.txt">
+    </label>
+  </div>
+</div>
+
+<div class="drag-overlay" id="dragOverlay">
+  <div class="drag-overlay-text">Drop to replace current file</div>
+</div>
+
+<div class="content" id="content">
+  <div class="markdown-body" id="markdownBody"></div>
+</div>
+
+<div class="toc" id="toc"></div>
+
+<button class="scroll-top" id="scrollTop" title="Scroll to top">&#8593;</button>
+
+<input type="file" class="hidden-input" id="fileInputAnother" accept=".md,.markdown,.txt">
+
+<script>
+(function() {
+  const dropZone = document.getElementById('dropZone');
+  const dragOverlay = document.getElementById('dragOverlay');
+  const content = document.getElementById('content');
+  const markdownBody = document.getElementById('markdownBody');
+  const filenameEl = document.getElementById('filename');
+  const fileInput = document.getElementById('fileInput');
+  const fileInputAnother = document.getElementById('fileInputAnother');
+  const themeToggle = document.getElementById('themeToggle');
+  const tocToggle = document.getElementById('tocToggle');
+  const tocEl = document.getElementById('toc');
+  const openAnother = document.getElementById('openAnother');
+  const scrollTopBtn = document.getElementById('scrollTop');
+  const hljsLight = document.getElementById('hljs-light');
+  const hljsDark = document.getElementById('hljs-dark');
+
+  let isContentVisible = false;
+  let imageMap = new Map();
+
+  marked.setOptions({
+    gfm: true,
+    breaks: true,
+    highlight: function(code, lang) {
+      if (lang && hljs.getLanguage(lang)) {
+        return hljs.highlight(code, { language: lang }).value;
+      }
+      return hljs.highlightAuto(code).value;
+    }
+  });
+
+  // Theme
+  function setTheme(dark) {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    hljsLight.disabled = dark;
+    hljsDark.disabled = !dark;
+    localStorage.setItem('md-viewer-theme', dark ? 'dark' : 'light');
+  }
+
+  const savedTheme = localStorage.getItem('md-viewer-theme');
+  if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    setTheme(true);
+  }
+
+  themeToggle.addEventListener('click', function() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    setTheme(!isDark);
+  });
+
+  // Drag and drop
+  let dragCounter = 0;
+
+  document.addEventListener('dragenter', function(e) {
+    e.preventDefault();
+    dragCounter++;
+    if (isContentVisible) {
+      dragOverlay.classList.add('active');
+    } else {
+      dropZone.classList.add('drag-over');
+    }
+  });
+
+  document.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter <= 0) {
+      dragCounter = 0;
+      dragOverlay.classList.remove('active');
+      dropZone.classList.remove('drag-over');
+    }
+  });
+
+  document.addEventListener('dragover', function(e) {
+    e.preventDefault();
+  });
+
+  document.addEventListener('drop', function(e) {
+    e.preventDefault();
+    dragCounter = 0;
+    dragOverlay.classList.remove('active');
+    dropZone.classList.remove('drag-over');
+
+    const items = e.dataTransfer.items;
+    const files = e.dataTransfer.files;
+
+    if (items && items.length > 0) {
+      imageMap.clear();
+      let mdFile = null;
+      let pending = 0;
+
+      for (let i = 0; i < items.length; i++) {
+        const entry = items[i].webkitGetAsEntry ? items[i].webkitGetAsEntry() : null;
+        if (entry) {
+          if (entry.isDirectory) {
+            pending++;
+            readDirectory(entry, function() {
+              pending--;
+              if (pending === 0 && mdFile) {
+                processFile(mdFile);
+              }
+            });
+          } else {
+            const file = files[i];
+            if (isMarkdownFile(file.name)) {
+              mdFile = file;
+            } else if (isImageFile(file.name)) {
+              pending++;
+              readFileAsDataURL(file, file.name, function() { pending--; if (pending === 0 && mdFile) processFile(mdFile); });
+            }
+          }
+        } else {
+          const file = files[i];
+          if (isMarkdownFile(file.name)) {
+            mdFile = file;
+          }
+        }
+      }
+
+      if (mdFile && pending === 0) {
+        processFile(mdFile);
+      }
+    }
+  });
+
+  function readDirectory(dirEntry, done) {
+    const reader = dirEntry.createReader();
+    reader.readEntries(function(entries) {
+      let pending = entries.length;
+      if (pending === 0) { done(); return; }
+      entries.forEach(function(entry) {
+        if (entry.isFile) {
+          entry.file(function(file) {
+            if (isImageFile(file.name)) {
+              readFileAsDataURL(file, entry.fullPath, function() {
+                pending--;
+                if (pending === 0) done();
+              });
+            } else {
+              pending--;
+              if (pending === 0) done();
+            }
+          });
+        } else if (entry.isDirectory) {
+          readDirectory(entry, function() {
+            pending--;
+            if (pending === 0) done();
+          });
+        } else {
+          pending--;
+          if (pending === 0) done();
+        }
+      });
+    });
+  }
+
+  function readFileAsDataURL(file, path, done) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const cleanPath = path.replace(/^\//, '');
+      imageMap.set(cleanPath, e.target.result);
+      const basename = cleanPath.split('/').pop();
+      imageMap.set(basename, e.target.result);
+      done();
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function isMarkdownFile(name) {
+    return /\.(md|markdown|txt)$/i.test(name);
+  }
+
+  function isImageFile(name) {
+    return /\.(png|jpe?g|gif|svg|webp|bmp|ico)$/i.test(name);
+  }
+
+  // File input
+  fileInput.addEventListener('change', function(e) {
+    if (e.target.files.length > 0) {
+      imageMap.clear();
+      processFile(e.target.files[0]);
+    }
+  });
+
+  fileInputAnother.addEventListener('change', function(e) {
+    if (e.target.files.length > 0) {
+      imageMap.clear();
+      processFile(e.target.files[0]);
+    }
+  });
+
+  openAnother.addEventListener('click', function() {
+    fileInputAnother.click();
+  });
+
+  // Process markdown file
+  function processFile(file) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      renderMarkdown(e.target.result, file.name);
+    };
+    reader.readAsText(file);
+  }
+
+  function renderMarkdown(text, filename) {
+    document.title = filename + ' - MD Viewer';
+    filenameEl.textContent = filename;
+
+    const renderer = new marked.Renderer();
+    const originalImage = renderer.image;
+    renderer.image = function(token) {
+      let src = token.href || token;
+      const title = token.title || '';
+      const alt = token.text || '';
+
+      if (imageMap.size > 0 && !src.startsWith('data:') && !src.startsWith('http')) {
+        const cleanSrc = src.replace(/^\.\//, '');
+        if (imageMap.has(cleanSrc)) {
+          src = imageMap.get(cleanSrc);
+        } else {
+          const basename = cleanSrc.split('/').pop();
+          if (imageMap.has(basename)) {
+            src = imageMap.get(basename);
+          }
+        }
+      }
+
+      return '<img src="' + src + '" alt="' + alt + '"' + (title ? ' title="' + title + '"' : '') + '>';
+    };
+
+    const html = marked.parse(text, { renderer: renderer });
+    markdownBody.innerHTML = html;
+
+    dropZone.style.display = 'none';
+    content.classList.add('active');
+    openAnother.style.display = 'flex';
+    tocToggle.style.display = 'flex';
+    isContentVisible = true;
+
+    buildTOC();
+    window.scrollTo(0, 0);
+  }
+
+  // Table of Contents
+  function buildTOC() {
+    const headings = markdownBody.querySelectorAll('h1, h2, h3, h4');
+    if (headings.length < 3) {
+      tocEl.innerHTML = '';
+      tocToggle.style.display = 'none';
+      return;
+    }
+
+    let tocHTML = '<div class="toc-title">Contents</div>';
+    headings.forEach(function(h, i) {
+      const id = 'heading-' + i;
+      h.id = id;
+      const level = h.tagName.toLowerCase();
+      tocHTML += '<a href="#' + id + '" class="toc-' + level + '">' + h.textContent + '</a>';
+    });
+
+    tocEl.innerHTML = tocHTML;
+    tocToggle.style.display = 'flex';
+  }
+
+  tocToggle.addEventListener('click', function() {
+    const isOpen = tocEl.classList.toggle('active');
+    content.classList.toggle('toc-open', isOpen);
+  });
+
+  // Scroll spy — highlight the active TOC item
+  window.addEventListener('scroll', function() {
+    const tocLinks = tocEl.querySelectorAll('a');
+    if (tocLinks.length === 0) return;
+    const headings = markdownBody.querySelectorAll('[id^="heading-"]');
+    let current = '';
+    headings.forEach(function(h) {
+      if (window.scrollY >= h.offsetTop - 80) {
+        current = h.id;
+      }
+    });
+    tocLinks.forEach(function(a) {
+      a.classList.toggle('toc-active', a.getAttribute('href') === '#' + current);
+    });
+  });
+
+  // Scroll to top
+  window.addEventListener('scroll', function() {
+    if (window.scrollY > 300) {
+      scrollTopBtn.classList.add('visible');
+    } else {
+      scrollTopBtn.classList.remove('visible');
+    }
+  });
+
+  scrollTopBtn.addEventListener('click', function() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+})();
+</script>
+</body>
+</html>
